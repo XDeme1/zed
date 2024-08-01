@@ -515,19 +515,12 @@ impl X11Client {
         let mut xim_handler = state.xim_handler.take().unwrap();
         let mut ic_attributes = ximc
             .build_ic_attributes()
-            .push(
-                AttributeName::InputStyle,
-                InputStyle::PREEDIT_CALLBACKS
-                    | InputStyle::STATUS_NOTHING
-                    | InputStyle::PREEDIT_NONE,
-            )
+            .push(AttributeName::InputStyle, InputStyle::PREEDIT_CALLBACKS)
             .push(AttributeName::ClientWindow, xim_handler.window)
             .push(AttributeName::FocusWindow, xim_handler.window);
 
-        let window_id = state.keyboard_focused_window;
         drop(state);
-        if let Some(window_id) = window_id {
-            let window = self.get_window(window_id).unwrap();
+        if let Some(window) = self.get_window(xim_handler.window) {
             if let Some(area) = window.get_ime_area() {
                 ic_attributes =
                     ic_attributes.nested_list(xim::AttributeName::PreeditAttributes, |b| {
@@ -611,6 +604,10 @@ impl X11Client {
                 window.set_active(true);
                 let mut state = self.0.borrow_mut();
                 state.keyboard_focused_window = Some(event.event);
+                state
+                    .xim_handler
+                    .as_mut()
+                    .map(|xim| xim.window = event.event);
                 drop(state);
                 self.enable_ime();
             }

@@ -48,12 +48,7 @@ impl<C: Client<XEvent = xproto::KeyPressEvent>> ClientHandler<C> for XimHandler 
     ) -> Result<(), ClientError> {
         let ic_attributes = client
             .build_ic_attributes()
-            .push(
-                AttributeName::InputStyle,
-                InputStyle::PREEDIT_CALLBACKS
-                    | InputStyle::STATUS_NOTHING
-                    | InputStyle::PREEDIT_NONE,
-            )
+            .push(AttributeName::InputStyle, InputStyle::PREEDIT_CALLBACKS)
             .push(AttributeName::ClientWindow, self.window)
             .push(AttributeName::FocusWindow, self.window)
             .build();
