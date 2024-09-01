@@ -947,6 +947,9 @@ impl<'a> WindowContext<'a> {
         }
 
         self.window.focus = Some(handle.id);
+        self.on_next_frame(|cx| {
+            cx.invalidate_character_coordinates();
+        });
         self.clear_pending_keystrokes();
         self.refresh();
     }

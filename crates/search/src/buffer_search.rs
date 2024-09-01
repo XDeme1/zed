@@ -552,7 +552,7 @@ impl BufferSearchBar {
             active_editor.search_bar_visibility_changed(false, cx);
             active_editor.toggle_filtered_search_ranges(false, cx);
             let handle = active_editor.focus_handle(cx);
-            self.focus(&handle, cx);
+            cx.focus(&handle);
         }
         cx.emit(Event::UpdateLocation);
         cx.emit(ToolbarItemEvent::ChangeLocation(
@@ -1032,7 +1032,7 @@ impl BufferSearchBar {
         } else {
             return;
         };
-        self.focus(&focus_handle, cx);
+        cx.focus(&focus_handle);
         cx.stop_propagation();
     }
 
@@ -1045,7 +1045,7 @@ impl BufferSearchBar {
         } else {
             return;
         };
-        self.focus(&focus_handle, cx);
+        cx.focus(&focus_handle);
         cx.stop_propagation();
     }
 
@@ -1083,12 +1083,6 @@ impl BufferSearchBar {
         }
     }
 
-    fn focus(&self, handle: &gpui::FocusHandle, cx: &mut ViewContext<Self>) {
-        cx.on_next_frame(|_, cx| {
-            cx.invalidate_character_coordinates();
-        });
-        cx.focus(handle);
-    }
     fn toggle_replace(&mut self, _: &ToggleReplace, cx: &mut ViewContext<Self>) {
         if let Some(_) = &self.active_searchable_item {
             self.replace_enabled = !self.replace_enabled;
@@ -1097,7 +1091,7 @@ impl BufferSearchBar {
             } else {
                 self.query_editor.focus_handle(cx)
             };
-            self.focus(&handle, cx);
+            cx.focus(&handle);
             cx.notify();
         }
     }
