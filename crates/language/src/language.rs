@@ -898,7 +898,7 @@ pub struct Grammar {
     pub embedding_config: Option<EmbeddingConfig>,
     pub(crate) injection_config: Option<InjectionConfig>,
     pub(crate) override_config: Option<OverrideConfig>,
-    pub(crate) highlight_map: Mutex<HighlightMap>,
+    pub highlight_map: Mutex<HighlightMap>,
 }
 
 struct IndentConfig {

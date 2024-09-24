@@ -439,6 +439,12 @@ pub struct DocumentHighlight {
     pub kind: DocumentHighlightKind,
 }
 
+#[derive(Default, Debug)]
+pub struct SemanticTokens {
+    pub result_id: Option<String>,
+    pub data: Vec<lsp::SemanticToken>,
+}
+
 #[derive(Clone, Debug)]
 pub struct Symbol {
     pub language_server_name: LanguageServerName,
@@ -3195,6 +3201,15 @@ impl Project {
         self.lsp_store.update(cx, |lsp_store, cx| {
             lsp_store.linked_edit(buffer, position, cx)
         })
+    }
+
+    pub fn semantic_tokens(
+        &self,
+        buffer: &Model<Buffer>,
+        cx: &mut ModelContext<Self>,
+    ) -> Task<Result<crate::SemanticTokens>> {
+        self.lsp_store
+            .update(cx, |lsp_store, cx| lsp_store.semantic_tokens(buffer, cx))
     }
 
     pub fn completions<T: ToOffset + ToPointUtf16>(

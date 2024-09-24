@@ -1267,6 +1267,29 @@ impl LspStore {
         )
     }
 
+    pub(crate) fn semantic_tokens(
+        &self,
+        buffer: &Model<Buffer>,
+        cx: &mut ModelContext<Self>,
+    ) -> Task<Result<crate::SemanticTokens>> {
+        let Some(server_id) = self
+            .language_servers_for_buffer(buffer.read(cx), cx)
+            .map(|(_, server)| LanguageServerToQuery::Other(server.server_id()))
+            .next()
+            .or_else(|| {
+                self.upstream_client()
+                    .is_some()
+                    .then_some(LanguageServerToQuery::Primary)
+            })
+        else {
+            return Task::ready(Ok(crate::SemanticTokens {
+                data: Vec::default(),
+                result_id: None,
+            }));
+        };
+        self.request_lsp(buffer.clone(), server_id, SemanticTokensFull {}, cx)
+    }
+
     fn apply_on_type_formatting(
         &self,
         buffer: Model<Buffer>,

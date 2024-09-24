@@ -293,7 +293,10 @@ message Envelope {
 
         TryExec try_exec = 252;
         ReadTextFile read_text_file = 253;
-        ReadTextFileResponse read_text_file_response = 254; // current max
+        ReadTextFileResponse read_text_file_response = 254; 
+
+        SemanticTokensFull semantic_tokens_full = 255;
+        SemanticTokensFullResponse semantic_tokens_full_response = 256; // current max
     }
 
     reserved 158 to 161;
@@ -2572,4 +2575,15 @@ message TryExec {
 
 message TryExecResponse {
     string text = 1;
+}
+
+message SemanticTokensFull {
+    uint64 project_id = 1;
+    uint64 buffer_id = 2;
+    repeated VectorClockEntry version = 3;
+}
+
+message SemanticTokensFullResponse {
+    uint32 line = 1;
+    repeated AnchorRange range = 2;
 }

@@ -39,6 +39,7 @@ mod proposed_changes_editor;
 mod rust_analyzer_ext;
 pub mod scroll;
 mod selections_collection;
+mod semantic_tokens;
 pub mod tasks;
 
 #[cfg(test)]
@@ -73,14 +74,14 @@ use fuzzy::{StringMatch, StringMatchCandidate};
 use git::blame::GitBlame;
 use git::diff_hunk_to_display;
 use gpui::{
-    div, impl_actions, point, prelude::*, px, relative, size, uniform_list, Action, AnyElement,
-    AppContext, AsyncWindowContext, AvailableSpace, BackgroundExecutor, Bounds, ClipboardEntry,
-    ClipboardItem, Context, DispatchPhase, ElementId, EntityId, EventEmitter, FocusHandle,
-    FocusOutEvent, FocusableView, FontId, FontWeight, HighlightStyle, Hsla, InteractiveText,
-    KeyContext, ListSizingBehavior, Model, MouseButton, PaintQuad, ParentElement, Pixels, Render,
-    SharedString, Size, StrikethroughStyle, Styled, StyledText, Subscription, Task, TextStyle,
-    UTF16Selection, UnderlineStyle, UniformListScrollHandle, View, ViewContext, ViewInputHandler,
-    VisualContext, WeakFocusHandle, WeakView, WindowContext,
+    div, impl_actions, point, prelude::*, px, relative, rgb, rgba, size, uniform_list, Action,
+    AnyElement, AppContext, AsyncWindowContext, AvailableSpace, BackgroundExecutor, Bounds,
+    ClipboardEntry, ClipboardItem, Context, DispatchPhase, ElementId, EntityId, EventEmitter,
+    FocusHandle, FocusOutEvent, FocusableView, FontId, FontWeight, HighlightStyle, Hsla,
+    InteractiveText, KeyContext, ListSizingBehavior, Model, MouseButton, PaintQuad, ParentElement,
+    Pixels, Render, SharedString, Size, StrikethroughStyle, Styled, StyledText, Subscription, Task,
+    TextStyle, UTF16Selection, UnderlineStyle, UniformListScrollHandle, View, ViewContext,
+    ViewInputHandler, VisualContext, WeakFocusHandle, WeakView, WindowContext,
 };
 use highlight_matching_bracket::refresh_matching_bracket_highlights;
 use hover_popover::{hide_hover, HoverState};
@@ -100,6 +101,7 @@ use language::{
 use language::{point_to_lsp, BufferRow, CharClassifier, Runnable, RunnableRange};
 use linked_editing_ranges::refresh_linked_ranges;
 use proposed_changes_editor::{ProposedChangesBuffer, ProposedChangesEditor};
+use semantic_tokens::refresh_semantic_tokens;
 use similar::{ChangeTag, TextDiff};
 use task::{ResolvedTask, TaskTemplate, TaskVariables};
 
@@ -266,6 +268,7 @@ impl InlayId {
 enum DiffRowHighlight {}
 enum DocumentHighlightRead {}
 enum DocumentHighlightWrite {}
+enum TextHi {}
 enum InputComposition {}
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -572,6 +575,7 @@ pub struct Editor {
     available_code_actions: Option<(Location, Arc<[CodeAction]>)>,
     code_actions_task: Option<Task<()>>,
     document_highlights_task: Option<Task<()>>,
+    semantic_tokens_task: Option<Task<()>>,
     linked_editing_range_task: Option<Task<Option<()>>>,
     linked_edit_ranges: linked_editing_ranges::LinkedEditingRanges,
     pending_rename: Option<RenameState>,
@@ -1919,6 +1923,7 @@ impl Editor {
             code_actions_task: Default::default(),
             document_highlights_task: Default::default(),
             linked_editing_range_task: Default::default(),
+            semantic_tokens_task: None,
             pending_rename: Default::default(),
             searchable: true,
             cursor_shape: EditorSettings::get_global(cx)
@@ -11786,6 +11791,7 @@ impl Editor {
 
                 let Some(project) = &self.project else { return };
                 let telemetry = project.read(cx).client().telemetry().clone();
+                refresh_semantic_tokens(self, cx);
                 refresh_linked_ranges(self, cx);
                 telemetry.log_edit_event("editor");
             }

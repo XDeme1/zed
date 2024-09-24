@@ -680,6 +680,21 @@ impl LanguageServer {
                         }),
                         ..SignatureHelpClientCapabilities::default()
                     }),
+                    semantic_tokens: Some(SemanticTokensClientCapabilities {
+                        dynamic_registration: Some(true),
+                        requests: SemanticTokensClientCapabilitiesRequests {
+                            full: Some(SemanticTokensFullOptions::Bool(true)),
+                            ..SemanticTokensClientCapabilitiesRequests::default()
+                        },
+                        token_types: Vec::from_iter([SemanticTokenType::FUNCTION]),
+                        multiline_token_support: Some(true),
+                        overlapping_token_support: Some(true),
+                        token_modifiers: Vec::from_iter([
+                            SemanticTokenModifier::DECLARATION,
+                            SemanticTokenModifier::DEFINITION,
+                        ]),
+                        ..SemanticTokensClientCapabilities::default()
+                    }),
                     synchronization: Some(TextDocumentSyncClientCapabilities {
                         did_save: Some(true),
                         ..TextDocumentSyncClientCapabilities::default()

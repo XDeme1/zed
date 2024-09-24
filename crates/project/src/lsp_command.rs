@@ -181,6 +181,8 @@ pub(crate) struct InlayHints {
 pub(crate) struct LinkedEditingRange {
     pub position: Anchor,
 }
+#[derive(Debug)]
+pub(crate) struct SemanticTokensFull {}
 
 #[async_trait(?Send)]
 impl LspCommand for PrepareRename {
@@ -3018,6 +3020,88 @@ impl LspCommand for LinkedEditingRange {
     }
 
     fn buffer_id_from_proto(message: &proto::LinkedEditingRange) -> Result<BufferId> {
+        BufferId::new(message.buffer_id)
+    }
+}
+
+#[async_trait(?Send)]
+impl LspCommand for SemanticTokensFull {
+    type Response = crate::SemanticTokens;
+    type LspRequest = lsp::request::SemanticTokensFullRequest;
+    type ProtoRequest = proto::SemanticTokensFull;
+
+    fn to_lsp(
+        &self,
+        path: &Path,
+        _: &Buffer,
+        _: &Arc<LanguageServer>,
+        _: &AppContext,
+    ) -> lsp::SemanticTokensParams {
+        lsp::SemanticTokensParams {
+            text_document: lsp::TextDocumentIdentifier {
+                uri: lsp::Url::from_file_path(path).unwrap(),
+            },
+            partial_result_params: Default::default(),
+            work_done_progress_params: Default::default(),
+        }
+    }
+
+    async fn response_from_lsp(
+        self,
+        message: Option<lsp::SemanticTokensResult>,
+        _: Model<LspStore>,
+        _: Model<Buffer>,
+        _: LanguageServerId,
+        _: AsyncAppContext,
+    ) -> Result<crate::SemanticTokens> {
+        if let Some(lsp::SemanticTokensResult::Tokens(semantic_tokens)) = message {
+            println!("{:?}", semantic_tokens.data);
+            Ok(crate::SemanticTokens {
+                result_id: semantic_tokens.result_id,
+                data: semantic_tokens.data,
+            })
+        } else {
+            Ok(crate::SemanticTokens {
+                data: Vec::default(),
+                result_id: None,
+            })
+        }
+    }
+
+    fn to_proto(&self, project_id: u64, buffer: &Buffer) -> proto::SemanticTokensFull {
+        todo!()
+    }
+
+    async fn from_proto(
+        _: proto::SemanticTokensFull,
+        _: Model<LspStore>,
+        _: Model<Buffer>,
+        _: AsyncAppContext,
+    ) -> Result<Self> {
+        todo!()
+    }
+
+    fn response_to_proto(
+        _: Self::Response,
+        _: &mut LspStore,
+        _: PeerId,
+        _: &clock::Global,
+        _: &mut AppContext,
+    ) -> proto::SemanticTokensFullResponse {
+        todo!()
+    }
+
+    async fn response_from_proto(
+        self,
+        _: <Self::ProtoRequest as proto::RequestMessage>::Response,
+        _: Model<LspStore>,
+        _: Model<Buffer>,
+        _: AsyncAppContext,
+    ) -> Result<crate::SemanticTokens> {
+        todo!()
+    }
+
+    fn buffer_id_from_proto(message: &proto::SemanticTokensFull) -> Result<BufferId> {
         BufferId::new(message.buffer_id)
     }
 }

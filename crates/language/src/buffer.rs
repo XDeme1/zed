@@ -2656,6 +2656,12 @@ impl BufferSnapshot {
         None
     }
 
+    pub fn get_captures(&self, range: Range<usize>) -> SyntaxMapCaptures<'_> {
+        self.syntax.captures(range, &self.text, |grammar| {
+            grammar.highlights_query.as_ref()
+        })
+    }
+
     fn get_highlights(&self, range: Range<usize>) -> (SyntaxMapCaptures, Vec<HighlightMap>) {
         let captures = self.syntax.captures(range, &self.text, |grammar| {
             grammar.highlights_query.as_ref()
