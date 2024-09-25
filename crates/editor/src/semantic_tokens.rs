@@ -1,5 +1,6 @@
 use crate::Editor;
-use gpui::ViewContext;
+use gpui::{rgba, HighlightStyle, ViewContext, ViewInputHandler};
+use multi_buffer::Anchor;
 use util::ResultExt;
 
 pub(super) fn refresh_semantic_tokens(
@@ -25,10 +26,42 @@ pub(super) fn refresh_semantic_tokens(
             .log_err()
             .unwrap();
         let tokens = tokens.await;
-        println!("{tokens:?}");
         editor.update(&mut cx, |editor, cx| {
-            let buffer = editor.buffer.read(cx).buffer(buf_id).unwrap().read(cx);
-            buffer.set_text("TESTE", cx);
+            let multibuffer = editor.buffer().read(cx);
+            let buffer = multibuffer.buffer(buf_id).unwrap();
+            let snapshot = buffer.read(cx).snapshot();
+            let mut ranges = Vec::new();
+            for token in tokens.tokens {
+                for (excerpt_id, excerpt_range) in multibuffer.excerpts_for_buffer(&buffer, cx) {
+                    let start = token
+                        .range
+                        .start
+                        .max(&excerpt_range.context.start, &snapshot);
+                    let end = token.range.end.min(&excerpt_range.context.end, &snapshot);
+                    if start.cmp(&end, &snapshot).is_ge() {
+                        continue;
+                    }
+                    let range = Anchor {
+                        buffer_id: Some(buf_id),
+                        excerpt_id,
+                        text_anchor: start,
+                    }..Anchor {
+                        buffer_id: Some(buf_id),
+                        excerpt_id,
+                        text_anchor: end,
+                    };
+                    ranges.push(range);
+                }
+            }
+            enum TI {}
+            editor.highlight_text::<TI>(
+                ranges,
+                HighlightStyle {
+                    background_color: Some(rgba(0xFFFFFFFF).into()),
+                    ..Default::default()
+                },
+                cx,
+            );
         });
     }));
     Some(())

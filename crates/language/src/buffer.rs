@@ -111,7 +111,7 @@ pub struct Buffer {
     autoindent_requests: Vec<Arc<AutoindentRequest>>,
     pending_autoindent: Option<Task<()>>,
     sync_parse_timeout: Duration,
-    syntax_map: Mutex<SyntaxMap>,
+    pub syntax_map: Mutex<SyntaxMap>,
     parsing_in_background: bool,
     parse_status: (watch::Sender<ParseStatus>, watch::Receiver<ParseStatus>),
     non_text_state_update_count: usize,

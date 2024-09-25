@@ -24,7 +24,7 @@ use lsp::{
     AdapterServerCapabilities, CodeActionKind, CodeActionOptions, CompletionContext,
     CompletionListItemDefaultsEditRange, CompletionTriggerKind, DocumentHighlightKind,
     LanguageServer, LanguageServerId, LinkedEditingRangeServerCapabilities, OneOf,
-    ServerCapabilities,
+    SemanticTokenModifier, SemanticTokenType, SemanticTokensServerCapabilities, ServerCapabilities,
 };
 use signature_help::{lsp_to_proto_signature, proto_to_lsp_signature};
 use std::{cmp::Reverse, ops::Range, path::Path, sync::Arc};
@@ -3049,26 +3049,90 @@ impl LspCommand for SemanticTokensFull {
     async fn response_from_lsp(
         self,
         message: Option<lsp::SemanticTokensResult>,
-        _: Model<LspStore>,
-        _: Model<Buffer>,
-        _: LanguageServerId,
-        _: AsyncAppContext,
+        lsp: Model<LspStore>,
+        buffer: Model<Buffer>,
+        server_id: LanguageServerId,
+        cx: AsyncAppContext,
     ) -> Result<crate::SemanticTokens> {
         if let Some(lsp::SemanticTokensResult::Tokens(semantic_tokens)) = message {
-            println!("{:?}", semantic_tokens.data);
-            Ok(crate::SemanticTokens {
-                result_id: semantic_tokens.result_id,
-                data: semantic_tokens.data,
+            buffer.read_with(&cx, |buffer, cx| {
+                let (_, server) = lsp
+                    .read(cx)
+                    .language_server_for_buffer(buffer, server_id, cx)
+                    .unwrap();
+                let capabilities = server.adapter_server_capabilities();
+                let (token_types, token_modifiers) = match capabilities
+                    .server_capabilities
+                    .semantic_tokens_provider
+                    .unwrap()
+                {
+                    SemanticTokensServerCapabilities::SemanticTokensOptions(options) => {
+                        (options.legend.token_types, options.legend.token_modifiers)
+                    }
+                    SemanticTokensServerCapabilities::SemanticTokensRegistrationOptions(
+                        options,
+                    ) => {
+                        let legend = options.semantic_tokens_options.legend;
+                        (legend.token_types, legend.token_modifiers)
+                    }
+                };
+                let mut previous_line = 0;
+                let mut previous_token_start = 0;
+                let tokens = semantic_tokens
+                    .data
+                    .into_iter()
+                    .map(|mut token| {
+                        let mut modifiers: Vec<SemanticTokenModifier> = Vec::new();
+                        while token.token_modifiers_bitset != 0 {
+                            let idx = token.token_modifiers_bitset.leading_zeros();
+                            if (idx as usize) >= token_modifiers.len() {
+                                break;
+                            }
+                            token.token_modifiers_bitset =
+                                (token.token_modifiers_bitset.wrapping_shl(idx + 1))
+                                    .wrapping_shr(idx + 1);
+                            modifiers.push(token_modifiers.get(idx as usize).unwrap().clone());
+                        }
+                        if token.delta_line != 0 {
+                            previous_token_start = 0;
+                        }
+                        let start = buffer.clip_point_utf16(
+                            point_from_lsp(lsp::Position {
+                                line: previous_line + token.delta_line,
+                                character: previous_token_start + token.delta_start,
+                            }),
+                            Bias::Left,
+                        );
+                        let end = buffer.clip_point_utf16(
+                            point_from_lsp(lsp::Position {
+                                line: previous_line + token.delta_line,
+                                character: previous_token_start + token.delta_start + token.length,
+                            }),
+                            Bias::Left,
+                        );
+                        previous_token_start += token.delta_start;
+                        previous_line += token.delta_line;
+                        crate::SemanticToken {
+                            kind: token_types.get(token.token_type as usize).unwrap().clone(),
+                            modifiers,
+                            range: buffer.anchor_before(start)..buffer.anchor_after(end),
+                        }
+                    })
+                    .collect();
+                crate::SemanticTokens {
+                    result_id: semantic_tokens.result_id,
+                    tokens,
+                }
             })
         } else {
             Ok(crate::SemanticTokens {
-                data: Vec::default(),
                 result_id: None,
+                tokens: Vec::default(),
             })
         }
     }
 
-    fn to_proto(&self, project_id: u64, buffer: &Buffer) -> proto::SemanticTokensFull {
+    fn to_proto(&self, _: u64, _: &Buffer) -> proto::SemanticTokensFull {
         todo!()
     }
 

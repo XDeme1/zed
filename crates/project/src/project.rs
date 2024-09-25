@@ -439,10 +439,16 @@ pub struct DocumentHighlight {
     pub kind: DocumentHighlightKind,
 }
 
+#[derive(Debug)]
+pub struct SemanticToken {
+    pub kind: lsp::SemanticTokenType,
+    pub modifiers: Vec<lsp::SemanticTokenModifier>,
+    pub range: Range<Anchor>,
+}
 #[derive(Default, Debug)]
 pub struct SemanticTokens {
     pub result_id: Option<String>,
-    pub data: Vec<lsp::SemanticToken>,
+    pub tokens: Vec<SemanticToken>,
 }
 
 #[derive(Clone, Debug)]

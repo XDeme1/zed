@@ -11791,8 +11791,8 @@ impl Editor {
 
                 let Some(project) = &self.project else { return };
                 let telemetry = project.read(cx).client().telemetry().clone();
-                refresh_semantic_tokens(self, cx);
                 refresh_linked_ranges(self, cx);
+                refresh_semantic_tokens(self, cx);
                 telemetry.log_edit_event("editor");
             }
             multi_buffer::Event::ExcerptsAdded {

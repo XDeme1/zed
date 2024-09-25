@@ -1283,8 +1283,8 @@ impl LspStore {
             })
         else {
             return Task::ready(Ok(crate::SemanticTokens {
-                data: Vec::default(),
                 result_id: None,
+                tokens: Vec::default(),
             }));
         };
         self.request_lsp(buffer.clone(), server_id, SemanticTokensFull {}, cx)
