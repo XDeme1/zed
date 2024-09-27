@@ -74,14 +74,14 @@ use fuzzy::{StringMatch, StringMatchCandidate};
 use git::blame::GitBlame;
 use git::diff_hunk_to_display;
 use gpui::{
-    div, impl_actions, point, prelude::*, px, relative, rgb, rgba, size, uniform_list, Action,
-    AnyElement, AppContext, AsyncWindowContext, AvailableSpace, BackgroundExecutor, Bounds,
-    ClipboardEntry, ClipboardItem, Context, DispatchPhase, ElementId, EntityId, EventEmitter,
-    FocusHandle, FocusOutEvent, FocusableView, FontId, FontWeight, HighlightStyle, Hsla,
-    InteractiveText, KeyContext, ListSizingBehavior, Model, MouseButton, PaintQuad, ParentElement,
-    Pixels, Render, SharedString, Size, StrikethroughStyle, Styled, StyledText, Subscription, Task,
-    TextStyle, UTF16Selection, UnderlineStyle, UniformListScrollHandle, View, ViewContext,
-    ViewInputHandler, VisualContext, WeakFocusHandle, WeakView, WindowContext,
+    div, impl_actions, point, prelude::*, px, relative, size, uniform_list, Action, AnyElement,
+    AppContext, AsyncWindowContext, AvailableSpace, BackgroundExecutor, Bounds, ClipboardEntry,
+    ClipboardItem, Context, DispatchPhase, ElementId, EntityId, EventEmitter, FocusHandle,
+    FocusOutEvent, FocusableView, FontId, FontWeight, HighlightStyle, Hsla, InteractiveText,
+    KeyContext, ListSizingBehavior, Model, MouseButton, PaintQuad, ParentElement, Pixels, Render,
+    SharedString, Size, StrikethroughStyle, Styled, StyledText, Subscription, Task, TextStyle,
+    UTF16Selection, UnderlineStyle, UniformListScrollHandle, View, ViewContext, ViewInputHandler,
+    VisualContext, WeakFocusHandle, WeakView, WindowContext,
 };
 use highlight_matching_bracket::refresh_matching_bracket_highlights;
 use hover_popover::{hide_hover, HoverState};
@@ -248,6 +248,43 @@ pub fn render_parsed_markdown(
             }
         }
     })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum SemanticTokenId {
+    Function,
+    Method,
+    Property,
+    Parameter,
+    Variable,
+    Macro,
+    Class,
+    Struct,
+    Enum,
+    EnumMember,
+    Type,
+    TypeParameter,
+    Comment,
+}
+
+impl SemanticTokenId {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Function => "function",
+            Self::Method => "function",
+            Self::Property => "property",
+            Self::Variable => "variable",
+            Self::Parameter => "variable.parameter",
+            Self::Macro => "constant",
+            Self::Struct => "type",
+            Self::Class => "type",
+            Self::Enum => "type",
+            Self::EnumMember => "variant",
+            Self::Type => "type",
+            Self::TypeParameter => "type",
+            Self::Comment => "comment",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -2535,6 +2572,7 @@ impl Editor {
             refresh_matching_bracket_highlights(self, cx);
             self.discard_inline_completion(false, cx);
             linked_editing_ranges::refresh_linked_ranges(self, cx);
+            refresh_semantic_tokens(self, cx);
             if self.git_blame_inline_enabled {
                 self.start_inline_blame_timer(cx);
             }
@@ -4187,6 +4225,7 @@ impl Editor {
                 }
                 editor.update(&mut cx, |editor, cx| {
                     editor.refresh_document_highlights(cx);
+                    refresh_semantic_tokens(editor, cx);
                 })?;
             }
             Ok(())
@@ -11694,6 +11733,19 @@ impl Editor {
     ) {
         self.display_map.update(cx, |map, _| {
             map.highlight_text(TypeId::of::<T>(), ranges, style)
+        });
+        cx.notify();
+    }
+
+    pub fn highlight_semantic_text(
+        &mut self,
+        type_id: TypeId,
+        ranges: Vec<Range<Anchor>>,
+        style: HighlightStyle,
+        cx: &mut ViewContext<Self>,
+    ) {
+        self.display_map.update(cx, |map, _| {
+            map.highlight_semantic_text(type_id, ranges, style)
         });
         cx.notify();
     }

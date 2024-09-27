@@ -1,6 +1,6 @@
 use crate::{HighlightStyles, InlayId};
 use collections::{BTreeMap, BTreeSet};
-use gpui::HighlightStyle;
+use gpui::{rgba, HighlightStyle};
 use language::{Chunk, Edit, Point, TextSummary};
 use multi_buffer::{
     Anchor, MultiBufferChunks, MultiBufferRow, MultiBufferRows, MultiBufferSnapshot, ToOffset,
@@ -211,6 +211,7 @@ pub struct InlayBufferRows<'a> {
 struct HighlightEndpoint {
     offset: InlayOffset,
     is_start: bool,
+    is_semantic: bool,
     tag: Option<TypeId>,
     style: HighlightStyle,
 }
@@ -226,6 +227,7 @@ impl Ord for HighlightEndpoint {
         self.offset
             .cmp(&other.offset)
             .then_with(|| other.is_start.cmp(&self.is_start))
+            .then_with(|| other.is_semantic.cmp(&self.is_semantic))
     }
 }
 
@@ -240,6 +242,7 @@ pub struct InlayChunks<'a> {
     highlight_styles: HighlightStyles,
     highlight_endpoints: Peekable<vec::IntoIter<HighlightEndpoint>>,
     active_highlights: BTreeMap<Option<TypeId>, HighlightStyle>,
+    semantic_highlights: BTreeMap<Option<TypeId>, HighlightStyle>,
     highlights: Highlights<'a>,
     snapshot: &'a InlaySnapshot,
 }
@@ -274,9 +277,18 @@ impl<'a> Iterator for InlayChunks<'a> {
         while let Some(endpoint) = self.highlight_endpoints.peek().copied() {
             if endpoint.offset <= self.output_offset {
                 if endpoint.is_start {
-                    self.active_highlights.insert(endpoint.tag, endpoint.style);
+                    if endpoint.is_semantic {
+                        self.semantic_highlights
+                            .insert(endpoint.tag, endpoint.style);
+                    } else {
+                        self.active_highlights.insert(endpoint.tag, endpoint.style);
+                    }
                 } else {
-                    self.active_highlights.remove(&endpoint.tag);
+                    if endpoint.is_semantic {
+                        self.semantic_highlights.remove(&endpoint.tag);
+                    } else {
+                        self.active_highlights.remove(&endpoint.tag);
+                    }
                 }
                 self.highlight_endpoints.next();
             } else {
@@ -314,6 +326,13 @@ impl<'a> Iterator for InlayChunks<'a> {
                         highlight_style.highlight(*active_highlight);
                     }
                     prefix.highlight_style = Some(highlight_style);
+                }
+                if !self.semantic_highlights.is_empty() {
+                    let mut semantic_highlight_style = HighlightStyle::default();
+                    for active_highlight in self.semantic_highlights.values() {
+                        semantic_highlight_style.highlight(*active_highlight);
+                    }
+                    prefix.semantic_highlight_style = Some(semantic_highlight_style);
                 }
                 prefix
             }
@@ -1050,7 +1069,20 @@ impl InlaySnapshot {
                 self.apply_text_highlights(
                     &mut cursor,
                     &range,
+                    false,
                     text_highlights,
+                    &mut highlight_endpoints,
+                );
+                cursor.seek(&range.start, Bias::Right, &());
+            }
+        }
+        if let Some(semantic_highlights) = highlights.semantic_highlights {
+            if !semantic_highlights.is_empty() {
+                self.apply_text_highlights(
+                    &mut cursor,
+                    &range,
+                    true,
+                    semantic_highlights,
                     &mut highlight_endpoints,
                 );
                 cursor.seek(&range.start, Bias::Right, &());
@@ -1071,6 +1103,7 @@ impl InlaySnapshot {
             highlight_styles: highlights.styles,
             highlight_endpoints: highlight_endpoints.into_iter().peekable(),
             active_highlights: Default::default(),
+            semantic_highlights: Default::default(),
             highlights,
             snapshot: self,
         }
@@ -1080,6 +1113,7 @@ impl InlaySnapshot {
         &self,
         cursor: &mut Cursor<'_, Transform, (InlayOffset, usize)>,
         range: &Range<InlayOffset>,
+        semantic: bool,
         text_highlights: &TreeMap<Option<TypeId>, Arc<(HighlightStyle, Vec<Range<Anchor>>)>>,
         highlight_endpoints: &mut Vec<HighlightEndpoint>,
     ) {
@@ -1118,12 +1152,14 @@ impl InlaySnapshot {
                     highlight_endpoints.push(HighlightEndpoint {
                         offset: self.to_inlay_offset(range.start.to_offset(&self.buffer)),
                         is_start: true,
+                        is_semantic: semantic,
                         tag: *tag,
                         style,
                     });
                     highlight_endpoints.push(HighlightEndpoint {
                         offset: self.to_inlay_offset(range.end.to_offset(&self.buffer)),
                         is_start: false,
+                        is_semantic: semantic,
                         tag: *tag,
                         style,
                     });

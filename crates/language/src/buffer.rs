@@ -486,6 +486,8 @@ pub struct Chunk<'a> {
     /// The highlight style that has been applied to this chunk in
     /// the editor.
     pub highlight_style: Option<HighlightStyle>,
+    ///
+    pub semantic_highlight_style: Option<HighlightStyle>,
     /// The severity of diagnostic associated with this chunk, if any.
     pub diagnostic_severity: Option<DiagnosticSeverity>,
     /// Whether this chunk of text is marked as unnecessary.
@@ -2654,12 +2656,6 @@ impl BufferSnapshot {
             }
         }
         None
-    }
-
-    pub fn get_captures(&self, range: Range<usize>) -> SyntaxMapCaptures<'_> {
-        self.syntax.captures(range, &self.text, |grammar| {
-            grammar.highlights_query.as_ref()
-        })
     }
 
     fn get_highlights(&self, range: Range<usize>) -> (SyntaxMapCaptures, Vec<HighlightMap>) {

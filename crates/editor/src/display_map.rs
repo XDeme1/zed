@@ -101,6 +101,8 @@ pub struct DisplayMap {
     block_map: BlockMap,
     /// Regions of text that should be highlighted.
     text_highlights: TextHighlights,
+    /// Regions of text that should be highlighted.
+    semantic_text_highlights: TextHighlights,
     /// Regions of inlays that should be highlighted.
     inlay_highlights: InlayHighlights,
     /// A container for explicitly foldable ranges, which supersede indentation based fold range suggestions.
@@ -154,6 +156,7 @@ impl DisplayMap {
             crease_map,
             fold_placeholder,
             text_highlights: Default::default(),
+            semantic_text_highlights: Default::default(),
             inlay_highlights: Default::default(),
             clip_at_line_ends: false,
             masked: false,
@@ -181,6 +184,7 @@ impl DisplayMap {
             block_snapshot,
             crease_snapshot: self.crease_map.snapshot(),
             text_highlights: self.text_highlights.clone(),
+            semantic_text_highlights: self.semantic_text_highlights.clone(),
             inlay_highlights: self.inlay_highlights.clone(),
             clip_at_line_ends: self.clip_at_line_ends,
             masked: self.masked,
@@ -350,6 +354,16 @@ impl DisplayMap {
             .insert(Some(type_id), Arc::new((style, ranges)));
     }
 
+    pub fn highlight_semantic_text(
+        &mut self,
+        type_id: TypeId,
+        ranges: Vec<Range<Anchor>>,
+        style: HighlightStyle,
+    ) {
+        self.semantic_text_highlights
+            .insert(Some(type_id), Arc::new((style, ranges)));
+    }
+
     pub(crate) fn highlight_inlays(
         &mut self,
         type_id: TypeId,
@@ -443,6 +457,7 @@ impl DisplayMap {
 #[derive(Debug, Default)]
 pub(crate) struct Highlights<'a> {
     pub text_highlights: Option<&'a TextHighlights>,
+    pub semantic_highlights: Option<&'a TextHighlights>,
     pub inlay_highlights: Option<&'a InlayHighlights>,
     pub styles: HighlightStyles,
 }
@@ -470,6 +485,7 @@ pub struct DisplaySnapshot {
     wrap_snapshot: WrapSnapshot,
     block_snapshot: BlockSnapshot,
     text_highlights: TextHighlights,
+    semantic_text_highlights: TextHighlights,
     inlay_highlights: InlayHighlights,
     clip_at_line_ends: bool,
     masked: bool,
@@ -654,6 +670,7 @@ impl DisplaySnapshot {
             self.masked,
             Highlights {
                 text_highlights: Some(&self.text_highlights),
+                semantic_highlights: Some(&self.semantic_text_highlights),
                 inlay_highlights: Some(&self.inlay_highlights),
                 styles: highlight_styles,
             },
@@ -685,6 +702,9 @@ impl DisplaySnapshot {
                 } else {
                     highlight_style = Some(chunk_highlight);
                 }
+            }
+            if let Some(semantic) = chunk.semantic_highlight_style {
+                highlight_style = Some(semantic);
             }
 
             let mut diagnostic_highlight = HighlightStyle::default();
