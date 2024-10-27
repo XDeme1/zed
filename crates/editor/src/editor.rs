@@ -101,7 +101,6 @@ use language::{
 use language::{point_to_lsp, BufferRow, CharClassifier, Runnable, RunnableRange};
 use linked_editing_ranges::refresh_linked_ranges;
 use proposed_changes_editor::{ProposedChangesBuffer, ProposedChangesEditor};
-use semantic_tokens::refresh_semantic_tokens;
 use similar::{ChangeTag, TextDiff};
 use task::{ResolvedTask, TaskTemplate, TaskVariables};
 
@@ -305,7 +304,6 @@ impl InlayId {
 enum DiffRowHighlight {}
 enum DocumentHighlightRead {}
 enum DocumentHighlightWrite {}
-enum TextHi {}
 enum InputComposition {}
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -612,7 +610,8 @@ pub struct Editor {
     available_code_actions: Option<(Location, Arc<[CodeAction]>)>,
     code_actions_task: Option<Task<()>>,
     document_highlights_task: Option<Task<()>>,
-    semantic_tokens_task: Option<Task<()>>,
+    semantic_tokens_task: Option<Task<Option<()>>>,
+    // semantic_tokens: HashMap<BufferId, Vec<i32>>,
     linked_editing_range_task: Option<Task<Option<()>>>,
     linked_edit_ranges: linked_editing_ranges::LinkedEditingRanges,
     pending_rename: Option<RenameState>,
@@ -2572,7 +2571,6 @@ impl Editor {
             refresh_matching_bracket_highlights(self, cx);
             self.discard_inline_completion(false, cx);
             linked_editing_ranges::refresh_linked_ranges(self, cx);
-            refresh_semantic_tokens(self, cx);
             if self.git_blame_inline_enabled {
                 self.start_inline_blame_timer(cx);
             }
@@ -4225,7 +4223,6 @@ impl Editor {
                 }
                 editor.update(&mut cx, |editor, cx| {
                     editor.refresh_document_highlights(cx);
-                    refresh_semantic_tokens(editor, cx);
                 })?;
             }
             Ok(())
@@ -11844,7 +11841,7 @@ impl Editor {
                 let Some(project) = &self.project else { return };
                 let telemetry = project.read(cx).client().telemetry().clone();
                 refresh_linked_ranges(self, cx);
-                refresh_semantic_tokens(self, cx);
+                // refresh_semantic_tokens(self, cx);
                 telemetry.log_edit_event("editor");
             }
             multi_buffer::Event::ExcerptsAdded {

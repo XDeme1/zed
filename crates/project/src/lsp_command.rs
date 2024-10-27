@@ -1,10 +1,11 @@
 mod signature_help;
 
 use crate::{
-    buffer_store::BufferStore, lsp_store::LspStore, CodeAction, CoreCompletion, DocumentHighlight,
-    Hover, HoverBlock, HoverBlockKind, InlayHint, InlayHintLabel, InlayHintLabelPart,
-    InlayHintLabelPartTooltip, InlayHintTooltip, Location, LocationLink, MarkupContent,
-    ProjectTransaction, ResolveState,
+    buffer_store::BufferStore,
+    lsp_store::{LanguageServerState, LspStore},
+    CodeAction, CoreCompletion, DocumentHighlight, Hover, HoverBlock, HoverBlockKind, InlayHint,
+    InlayHintLabel, InlayHintLabelPart, InlayHintLabelPartTooltip, InlayHintTooltip, Location,
+    LocationLink, MarkupContent, ProjectTransaction, ResolveState,
 };
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
@@ -24,7 +25,7 @@ use lsp::{
     AdapterServerCapabilities, CodeActionKind, CodeActionOptions, CompletionContext,
     CompletionListItemDefaultsEditRange, CompletionTriggerKind, DocumentHighlightKind,
     LanguageServer, LanguageServerId, LinkedEditingRangeServerCapabilities, OneOf,
-    SemanticTokenModifier, SemanticTokenType, SemanticTokensServerCapabilities, ServerCapabilities,
+    SemanticTokenModifier, SemanticTokensServerCapabilities, ServerCapabilities,
 };
 use signature_help::{lsp_to_proto_signature, proto_to_lsp_signature};
 use std::{cmp::Reverse, ops::Range, path::Path, sync::Arc};
@@ -183,11 +184,6 @@ pub(crate) struct LinkedEditingRange {
 }
 #[derive(Debug)]
 pub(crate) struct SemanticTokensFull {}
-
-#[derive(Debug)]
-pub(crate) struct SemanticTokensFullDelta {
-    result_id: String,
-}
 
 #[async_trait(?Send)]
 impl LspCommand for PrepareRename {
@@ -3031,7 +3027,7 @@ impl LspCommand for LinkedEditingRange {
 
 #[async_trait(?Send)]
 impl LspCommand for SemanticTokensFull {
-    type Response = crate::SemanticTokens;
+    type Response = lsp::SemanticTokens;
     type LspRequest = lsp::request::SemanticTokensFullRequest;
     type ProtoRequest = proto::SemanticTokensFull;
 
@@ -3054,87 +3050,44 @@ impl LspCommand for SemanticTokensFull {
     async fn response_from_lsp(
         self,
         message: Option<lsp::SemanticTokensResult>,
-        lsp: Model<LspStore>,
-        buffer: Model<Buffer>,
+        store: Model<LspStore>,
+        _: Model<Buffer>,
         server_id: LanguageServerId,
-        cx: AsyncAppContext,
-    ) -> Result<crate::SemanticTokens> {
-        if let Some(lsp::SemanticTokensResult::Tokens(semantic_tokens)) = message {
-            buffer.read_with(&cx, |buffer, cx| {
-                let (_, server) = lsp
-                    .read(cx)
-                    .language_server_for_buffer(buffer, server_id, cx)
-                    .unwrap();
-                let capabilities = server.adapter_server_capabilities();
-                let (token_types, token_modifiers) = match capabilities
-                    .server_capabilities
-                    .semantic_tokens_provider
-                    .unwrap()
-                {
-                    SemanticTokensServerCapabilities::SemanticTokensOptions(options) => {
-                        (options.legend.token_types, options.legend.token_modifiers)
-                    }
-                    SemanticTokensServerCapabilities::SemanticTokensRegistrationOptions(
-                        options,
-                    ) => {
-                        let legend = options.semantic_tokens_options.legend;
-                        (legend.token_types, legend.token_modifiers)
-                    }
-                };
-                let mut previous_line = 0;
-                let mut previous_token_start = 0;
-                let tokens = semantic_tokens
-                    .data
-                    .into_iter()
-                    .map(|mut token| {
-                        let mut modifiers: Vec<SemanticTokenModifier> = Vec::new();
-                        while token.token_modifiers_bitset != 0 {
-                            let idx = token.token_modifiers_bitset.leading_zeros();
-                            if (idx as usize) >= token_modifiers.len() {
-                                break;
-                            }
-                            token.token_modifiers_bitset =
-                                (token.token_modifiers_bitset.wrapping_shl(idx + 1))
-                                    .wrapping_shr(idx + 1);
-                            modifiers.push(token_modifiers.get(idx as usize).unwrap().clone());
-                        }
-                        if token.delta_line != 0 {
-                            previous_token_start = 0;
-                        }
-                        let start = buffer.clip_point_utf16(
-                            point_from_lsp(lsp::Position {
-                                line: previous_line + token.delta_line,
-                                character: previous_token_start + token.delta_start,
-                            }),
-                            Bias::Left,
-                        );
-                        let end = buffer.clip_point_utf16(
-                            point_from_lsp(lsp::Position {
-                                line: previous_line + token.delta_line,
-                                character: previous_token_start + token.delta_start + token.length,
-                            }),
-                            Bias::Left,
-                        );
-                        previous_token_start += token.delta_start;
-                        previous_line += token.delta_line;
-                        crate::SemanticToken {
-                            kind: token_types.get(token.token_type as usize).unwrap().clone(),
-                            modifiers,
-                            range: buffer.anchor_before(start)..buffer.anchor_after(end),
-                        }
-                    })
-                    .collect();
-                crate::SemanticTokens {
-                    result_id: semantic_tokens.result_id,
-                    tokens,
+        mut cx: AsyncAppContext,
+    ) -> Result<lsp::SemanticTokens> {
+        let Some(lsp::SemanticTokensResult::Tokens(semantic_tokens)) = message else {
+            return Ok(lsp::SemanticTokens::default());
+        };
+        let _ = store.update(&mut cx, |store, _| {
+            let Some(lsp) = store.language_server_for_id(server_id) else {
+                return;
+            };
+            let capabilities = lsp.adapter_server_capabilities();
+            let (token_types, _token_modifiers) = match capabilities
+                .server_capabilities
+                .semantic_tokens_provider
+                .unwrap()
+            {
+                SemanticTokensServerCapabilities::SemanticTokensOptions(options) => {
+                    (options.legend.token_types, options.legend.token_modifiers)
                 }
-            })
-        } else {
-            Ok(crate::SemanticTokens {
-                result_id: None,
-                tokens: Vec::default(),
-            })
-        }
+                SemanticTokensServerCapabilities::SemanticTokensRegistrationOptions(options) => {
+                    let legend = options.semantic_tokens_options.legend;
+                    (legend.token_types, legend.token_modifiers)
+                }
+            };
+            let server_state = store
+                .as_local_mut()
+                .and_then(|store| store.language_servers.get_mut(&server_id));
+            if let Some(LanguageServerState::Running {
+                semantic_token_types,
+                ..
+            }) = server_state
+            {
+                *semantic_token_types = token_types;
+            }
+        });
+        Ok(semantic_tokens)
     }
 
     fn to_proto(&self, _: u64, _: &Buffer) -> proto::SemanticTokensFull {
@@ -3166,154 +3119,7 @@ impl LspCommand for SemanticTokensFull {
         _: Model<LspStore>,
         _: Model<Buffer>,
         _: AsyncAppContext,
-    ) -> Result<crate::SemanticTokens> {
-        todo!()
-    }
-
-    fn buffer_id_from_proto(message: &proto::SemanticTokensFull) -> Result<BufferId> {
-        BufferId::new(message.buffer_id)
-    }
-}
-
-#[async_trait(?Send)]
-impl LspCommand for SemanticTokensFullDelta {
-    type Response = crate::SemanticTokens;
-    type LspRequest = lsp::request::SemanticTokensFullDeltaRequest;
-    type ProtoRequest = proto::SemanticTokensFull;
-
-    fn to_lsp(
-        &self,
-        path: &Path,
-        _: &Buffer,
-        _: &Arc<LanguageServer>,
-        _: &AppContext,
-    ) -> lsp::SemanticTokensDeltaParams {
-        lsp::SemanticTokensDeltaParams {
-            previous_result_id: self.result_id.clone(),
-            text_document: lsp::TextDocumentIdentifier {
-                uri: lsp::Url::from_file_path(path).unwrap(),
-            },
-            partial_result_params: Default::default(),
-            work_done_progress_params: Default::default(),
-        }
-    }
-
-    async fn response_from_lsp(
-        self,
-        message: Option<lsp::SemanticTokensFullDeltaResult>,
-        lsp: Model<LspStore>,
-        buffer: Model<Buffer>,
-        server_id: LanguageServerId,
-        cx: AsyncAppContext,
-    ) -> Result<crate::SemanticTokens> {
-        if let Some(lsp::SemanticTokensFullDeltaResult::Tokens(semantic_tokens)) = message {
-            buffer.read_with(&cx, |buffer, cx| {
-                let (_, server) = lsp
-                    .read(cx)
-                    .language_server_for_buffer(buffer, server_id, cx)
-                    .unwrap();
-                let capabilities = server.adapter_server_capabilities();
-                let (token_types, token_modifiers) = match capabilities
-                    .server_capabilities
-                    .semantic_tokens_provider
-                    .unwrap()
-                {
-                    SemanticTokensServerCapabilities::SemanticTokensOptions(options) => {
-                        (options.legend.token_types, options.legend.token_modifiers)
-                    }
-                    SemanticTokensServerCapabilities::SemanticTokensRegistrationOptions(
-                        options,
-                    ) => {
-                        let legend = options.semantic_tokens_options.legend;
-                        (legend.token_types, legend.token_modifiers)
-                    }
-                };
-                let mut previous_line = 0;
-                let mut previous_token_start = 0;
-                let tokens = semantic_tokens
-                    .data
-                    .into_iter()
-                    .map(|mut token| {
-                        let mut modifiers: Vec<SemanticTokenModifier> = Vec::new();
-                        while token.token_modifiers_bitset != 0 {
-                            let idx = token.token_modifiers_bitset.leading_zeros();
-                            if (idx as usize) >= token_modifiers.len() {
-                                break;
-                            }
-                            token.token_modifiers_bitset =
-                                (token.token_modifiers_bitset.wrapping_shl(idx + 1))
-                                    .wrapping_shr(idx + 1);
-                            modifiers.push(token_modifiers.get(idx as usize).unwrap().clone());
-                        }
-                        if token.delta_line != 0 {
-                            previous_token_start = 0;
-                        }
-                        let start = buffer.clip_point_utf16(
-                            point_from_lsp(lsp::Position {
-                                line: previous_line + token.delta_line,
-                                character: previous_token_start + token.delta_start,
-                            }),
-                            Bias::Left,
-                        );
-                        let end = buffer.clip_point_utf16(
-                            point_from_lsp(lsp::Position {
-                                line: previous_line + token.delta_line,
-                                character: previous_token_start + token.delta_start + token.length,
-                            }),
-                            Bias::Left,
-                        );
-                        previous_token_start += token.delta_start;
-                        previous_line += token.delta_line;
-                        crate::SemanticToken {
-                            kind: token_types.get(token.token_type as usize).unwrap().clone(),
-                            modifiers,
-                            range: buffer.anchor_before(start)..buffer.anchor_after(end),
-                        }
-                    })
-                    .collect();
-                crate::SemanticTokens {
-                    result_id: semantic_tokens.result_id,
-                    tokens,
-                }
-            })
-        } else {
-            Ok(crate::SemanticTokens {
-                result_id: None,
-                tokens: Vec::default(),
-            })
-        }
-    }
-
-    fn to_proto(&self, _: u64, _: &Buffer) -> proto::SemanticTokensFull {
-        todo!()
-    }
-
-    async fn from_proto(
-        _: proto::SemanticTokensFull,
-        _: Model<LspStore>,
-        _: Model<Buffer>,
-        _: AsyncAppContext,
-    ) -> Result<Self> {
-        todo!()
-    }
-
-    fn response_to_proto(
-        _: Self::Response,
-        _: &mut LspStore,
-        _: PeerId,
-        _: &clock::Global,
-        _: &mut AppContext,
-    ) -> proto::SemanticTokensFullResponse {
-        todo!()
-    }
-
-    async fn response_from_proto(
-        self,
-        _: <Self::ProtoRequest as proto::RequestMessage>::Response,
-        _: Model<LspStore>,
-        _: Model<Buffer>,
-        _: AsyncAppContext,
-    ) -> Result<crate::SemanticTokens> {
+    ) -> Result<lsp::SemanticTokens> {
         todo!()
     }
 

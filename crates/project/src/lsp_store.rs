@@ -1271,7 +1271,7 @@ impl LspStore {
         &self,
         buffer: &Model<Buffer>,
         cx: &mut ModelContext<Self>,
-    ) -> Task<Result<crate::SemanticTokens>> {
+    ) -> Task<Result<lsp::SemanticTokens>> {
         let Some(server_id) = self
             .language_servers_for_buffer(buffer.read(cx), cx)
             .map(|(_, server)| LanguageServerToQuery::Other(server.server_id()))
@@ -1282,10 +1282,7 @@ impl LspStore {
                     .then_some(LanguageServerToQuery::Primary)
             })
         else {
-            return Task::ready(Ok(crate::SemanticTokens {
-                result_id: None,
-                tokens: Vec::default(),
-            }));
+            return Task::ready(Ok(lsp::SemanticTokens::default()));
         };
         self.request_lsp(buffer.clone(), server_id, SemanticTokensFull {}, cx)
     }
@@ -6063,6 +6060,8 @@ impl LspStore {
                     language: language.clone(),
                     server: language_server.clone(),
                     simulate_disk_based_diagnostics_completion: None,
+                    last_semantic_tokens_id: None,
+                    semantic_token_types: Vec::default(),
                 },
             );
         }
@@ -7016,6 +7015,8 @@ pub enum LanguageServerState {
         adapter: Arc<CachedLspAdapter>,
         server: Arc<LanguageServer>,
         simulate_disk_based_diagnostics_completion: Option<Task<()>>,
+        last_semantic_tokens_id: Option<String>,
+        semantic_token_types: Vec<lsp::SemanticTokenType>,
     },
 }
 

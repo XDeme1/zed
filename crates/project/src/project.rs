@@ -3213,7 +3213,7 @@ impl Project {
         &self,
         buffer: &Model<Buffer>,
         cx: &mut ModelContext<Self>,
-    ) -> Task<Result<crate::SemanticTokens>> {
+    ) -> Task<Result<lsp::SemanticTokens>> {
         self.lsp_store
             .update(cx, |lsp_store, cx| lsp_store.semantic_tokens(buffer, cx))
     }
