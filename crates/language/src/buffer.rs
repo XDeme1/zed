@@ -9,6 +9,7 @@ use crate::{
     language_settings::{language_settings, IndentGuideSettings, LanguageSettings},
     markdown::parse_markdown,
     outline::OutlineItem,
+    semantic_tokens::{SemanticTokenEntry, SemanticTokenSet},
     syntax_map::{
         SyntaxLayer, SyntaxMap, SyntaxMapCapture, SyntaxMapCaptures, SyntaxMapMatch,
         SyntaxMapMatches, SyntaxSnapshot, ToTreeSitterPoint,
@@ -118,6 +119,7 @@ pub struct Buffer {
     diagnostics: SmallVec<[(LanguageServerId, DiagnosticSet); 2]>,
     remote_selections: TreeMap<ReplicaId, SelectionSet>,
     diagnostics_timestamp: clock::Lamport,
+    semantic_tokens: SmallVec<[SemanticTokenSet; 1]>,
     completion_triggers: Vec<String>,
     completion_triggers_timestamp: clock::Lamport,
     deferred_ops: OperationQueue<Operation>,
@@ -765,6 +767,7 @@ impl Buffer {
             remote_selections: Default::default(),
             diagnostics: Default::default(),
             diagnostics_timestamp: Default::default(),
+            semantic_tokens: Default::default(),
             completion_triggers: Default::default(),
             completion_triggers_timestamp: Default::default(),
             deferred_ops: OperationQueue::new(),

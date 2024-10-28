@@ -13,6 +13,7 @@ mod language_registry;
 pub mod language_settings;
 mod outline;
 pub mod proto;
+pub mod semantic_tokens;
 mod syntax_map;
 mod task_context;
 
